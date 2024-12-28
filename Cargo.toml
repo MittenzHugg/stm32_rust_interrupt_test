@@ -1,0 +1,30 @@
+[package]
+name = "aprs_beacon_rs"
+version = "0.1.0"
+authors = ["banjo.decomp <banjo.decomp@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.5.0"
+panic-halt = "0.2.0"
+panic-semihosting = "0.6.0"
+
+[dependencies.stm32l4xx-hal]
+version = "0.7.1"
+features = ["stm32l476", "rt"]
+
+[build-dependencies]
+reqwest = { version = "0.11", features = ["blocking"] }
+
+# Set the default for dependencies.
+[profile.dev.package."*"]
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+incremental = false
+debug = true
+lto = true
+opt-level = "s"
