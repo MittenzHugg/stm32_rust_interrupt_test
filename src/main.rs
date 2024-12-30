@@ -3,7 +3,7 @@
 
 extern crate cortex_m;
 extern crate cortex_m_rt as rt;
-extern crate panic_semihosting;
+extern crate panic_halt;
 extern crate stm32l4xx_hal as hal;
 
 use crate::hal::{
@@ -18,12 +18,8 @@ use cortex_m::{
     interrupt::{free, Mutex},
     peripheral::NVIC,
 };
-use cortex_m_semihosting::hprintln;
-use rt::{
-    entry,
-    exception,
-    ExceptionFrame,
-};
+
+use rt::entry;
 
 enum SystemState{
     Sleep,
@@ -38,58 +34,59 @@ static _SYSTEM_STATE: Mutex<Cell<SystemState>> = Mutex::new(Cell::new(SystemStat
 
 #[entry]
 fn main() -> ! {
-    if let Some(mut dp) = stm32::Peripherals::take() {
-        dp.RCC.apb2enr.write(|w| w.syscfgen().set_bit());
+    let mut dp = stm32::Peripherals::take().unwrap();
+    
+    // set vtor address to .vector_table
+    // Note this is handled by the "set-vtor" feature of the cortex_m_rt crate
+    // let mut cp = cortex_m::Peripherals::take().unwrap();
+    // unsafe{cp.SCB.vtor.write(ORIGIN(FLASH))};
+    // hprintln!("vtor set to {:#x}",cp.SCB.vtor.read());
 
-        let mut rcc = dp.RCC.constrain();
-        let mut flash = dp.FLASH.constrain(); // .constrain();
-        let mut pwr = dp.PWR.constrain(&mut rcc.apb1r1);
+    dp.RCC.apb2enr.write(|w| w.syscfgen().set_bit());
 
-        rcc.cfgr
-            .hclk(48.MHz())
-            .sysclk(80.MHz())
-            .pclk1(24.MHz())
-            .pclk2(24.MHz())
-            .freeze(&mut flash.acr, &mut pwr);
+    let mut rcc = dp.RCC.constrain();
+    let mut flash = dp.FLASH.constrain(); // .constrain();
+    let mut pwr = dp.PWR.constrain(&mut rcc.apb1r1);
 
-        // Create a button input with an interrupt
-        hprintln!("Maybe fail");
-        let mut gpioc = dp.GPIOC.split(&mut rcc.ahb2);
-        let mut board_btn = gpioc
-            .pc13
-            .into_pull_up_input(&mut gpioc.moder, &mut gpioc.pupdr);
-        board_btn.make_interrupt_source(&mut dp.SYSCFG, &mut rcc.apb2);
-        board_btn.enable_interrupt(&mut dp.EXTI);
-        board_btn.trigger_on_edge(&mut dp.EXTI, Edge::Falling);
+    rcc.cfgr
+        .hclk(48.MHz())
+        .sysclk(80.MHz())
+        .pclk1(24.MHz())
+        .pclk2(24.MHz())
+        .freeze(&mut flash.acr, &mut pwr);
 
-        hprintln!("Made it");
+    // Create led
+    let mut gpioa = dp.GPIOA.split(&mut rcc.ahb2);
+    let mut led = gpioa.pa5.into_push_pull_output_in_state(&mut gpioa.moder, &mut gpioa.otyper, PinState::Low);
 
-        // Move button to global context
-        free(|cs| {
-            BUTTON.borrow(cs).replace(Some(board_btn));
-        });
-        hprintln!("Buttons moved to global context");
+    // Create a button input with an interrupt
+    let mut gpioc = dp.GPIOC.split(&mut rcc.ahb2);
+    let mut board_btn = gpioc
+        .pc13
+        .into_pull_up_input(&mut gpioc.moder, &mut gpioc.pupdr);
+    board_btn.make_interrupt_source(&mut dp.SYSCFG, &mut rcc.apb2);
+    board_btn.enable_interrupt(&mut dp.EXTI);
+    board_btn.trigger_on_edge(&mut dp.EXTI, Edge::Falling);
 
-        // Enable interrupts
-        unsafe {
-            NVIC::unmask(stm32::Interrupt::EXTI15_10);
-        }     
+    // Move button to global context
+    free(|cs| {
+        BUTTON.borrow(cs).replace(Some(board_btn));
+    });
 
-        hprintln!("Interrupts enables");
-
-        let mut press_count = free(|cs| {return PRESS_COUNT.borrow(cs).get();});
-        loop {
-            let new_count = free(|cs| {return PRESS_COUNT.borrow(cs).get();});
-            if new_count != press_count {
-                //indicate it
-                hprintln!("Press Count: {}", new_count);
-                press_count = new_count;
-            }
-        }
+    // Enable interrupts
+    unsafe {
+        NVIC::unmask(stm32::Interrupt::EXTI15_10);
     }
 
+    let mut press_count = free(|cs| {return PRESS_COUNT.borrow(cs).get();});
     loop {
-        continue;
+        // check if interrupt updated value
+        let new_count = free(|cs| {return PRESS_COUNT.borrow(cs).get();});
+        if new_count != press_count {
+            //indicate it
+            led.toggle();
+            press_count = new_count;
+        }
     }
 }
 
@@ -108,7 +105,3 @@ fn EXTI15_10() {
     });
 }
 
-#[exception]
-unsafe fn HardFault(ef: &ExceptionFrame) -> ! {
-    panic!("Hard Fault happens: {:#?}", ef);
-}

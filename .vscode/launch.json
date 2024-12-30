@@ -7,7 +7,7 @@
             "request": "launch",
             "name": "probe-rs-debugger",
             // "server": "127.0.0.1:50001", // For connecting to an existing probe-rs-debugger process
-            "chip": "STM32L476RGx",
+            "chip": "STM32L476RG",
             "cwd": "${workspaceFolder}",
             "coreConfigs": [
                 {
@@ -44,7 +44,7 @@
             "request": "launch",
             "name": "probe-rs-release",
             // "server": "127.0.0.1:50001", // For connecting to an existing probe-rs-debugger process
-            "chip": "STM32L476RGx",
+            "chip": "STM32L476RG",
             "cwd": "${workspaceFolder}",
             "coreConfigs": [
                 {
